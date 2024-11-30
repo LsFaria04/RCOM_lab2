@@ -127,27 +127,46 @@ int readServerResponsePassive(const int socket, char* response, int* filePort){
 }
 //gets the server response (code number)
 int readServerResponse(const int socket, char* response){
-    char *byte = malloc(sizeof(char) * 2);
-    int index = 0;
+    char *byte = malloc(sizeof(char) * 4);
+
 
     response_st = CODE;
-    
-    while(response_st != END){
-        read(socket, byte, 1);
 
+    //get the code
+    read(socket, response, 3);
+    response[3] = '\0';
+
+    while(response_st != END){
+        
+        read(socket, byte, 1);
         response_state_machine(byte);
 
-        if(index < 3 && response_st == CODE){
-            response[index] = *byte;  
-            index++;   
-        }
+        if(response_st == CODE){
+            read(socket,byte,3);
+            byte[3] = '\0';
 
-        
-        
+            //found a new line that starts with the response code
+            if(strcmp(byte, response) == 0){
+                memset(byte, 0, 4);
+
+                //printf("here");
+                //read one more char to verify if is the last line
+                read(socket, byte, 1);
+                byte[1] = '\0';
+
+                //if has a blank space then his the last line
+                if(strcmp(byte, "-") == 0){
+                    response_st = MANY;
+                    continue;
+                }
+                else{
+                    response_st = ONE;
+                }
+            }
+        }          
     }
 
     free(byte);
-    response[3] = '\0';
     printf("Server answered with : %s\n\n", response);
     return 0;
 }
@@ -250,8 +269,8 @@ int main (int argc, char* argv[]){
     }
 
     //receive confirmation to insert the user name
-    char *response = malloc(sizeof(char) * 3);
-    memset(response, 0, 3);
+    char *response = malloc(sizeof(char) * 4);
+    memset(response, 0, 4);
     readServerResponse(sockfd,response );
     if(strcmp(response, "220") != 0){
         printf("Server side problem. Wrong reponse. Please try again.\n");
@@ -260,7 +279,7 @@ int main (int argc, char* argv[]){
 
 
     //send username
-    memset(response, 0, 3 * sizeof(char));
+    memset(response, 0, 4 * sizeof(char));
     char *info = malloc(sizeof(char) * 1000);
     memcpy(info, "user ", 5);
     memcpy(info + 5, user, strlen(user));
@@ -268,14 +287,14 @@ int main (int argc, char* argv[]){
     info[5 + strlen(user) + 1] = '\0';
     printf("%s", info);
     sendInfo(sockfd, info);
-    readServerResponse(sockfd,response );
+    readServerResponse(sockfd,response);
     if(strcmp(response, "331") != 0){
         printf("Unknown User. Please try again\n");
         return -1;
     }
 
     //send password
-    memset(response, 0, 3 * sizeof(char));
+    memset(response, 0, 4 * sizeof(char));
     memset(info, 0, 1000 * sizeof(char));
     memcpy(info, "pass ", 5);
     memcpy(info + 5, pass , strlen(pass));
@@ -290,7 +309,7 @@ int main (int argc, char* argv[]){
     }
 
     //send passive mode command
-    memset(response, 0, 3 * sizeof(char));
+    memset(response, 0, 4 * sizeof(char));
     memset(info, 0, 1000 * sizeof(char));
     memcpy(info, "pasv\n\0", 6);
     printf("%s", info);
@@ -310,7 +329,7 @@ int main (int argc, char* argv[]){
     }
 
     //receive confirmation of the connection to B
-    memset(response, 0, 3 * sizeof(char));
+    memset(response, 0, 4 * sizeof(char));
     memset(info, 0, 1000 * sizeof(char));
     memcpy(info, "retr ", 5);
     memcpy(info + 5, path, strlen(path));
@@ -331,7 +350,7 @@ int main (int argc, char* argv[]){
     readFile(sockfd2, filename);
 
     //get the confirmation that the file was transferred
-    memset(response, 0, 3 * sizeof(char));
+    memset(response, 0, 4 * sizeof(char));
     memset(info, 0, 1000 * sizeof(char));
     readServerResponse(sockfd, response);
     if(strcmp(response, "226") != 0){
