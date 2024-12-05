@@ -141,6 +141,8 @@ int readServerResponse(const int socket, char* response){
         read(socket, byte, 1);
         response_state_machine(byte);
 
+        byte[1] = '\0';
+
         if(response_st == CODE){
             read(socket,byte,3);
             byte[3] = '\0';
@@ -149,7 +151,6 @@ int readServerResponse(const int socket, char* response){
             if(strcmp(byte, response) == 0){
                 memset(byte, 0, 4);
 
-                //printf("here");
                 //read one more char to verify if is the last line
                 read(socket, byte, 1);
                 byte[1] = '\0';
@@ -281,10 +282,11 @@ int main (int argc, char* argv[]){
     //send username
     memset(response, 0, 4 * sizeof(char));
     char *info = malloc(sizeof(char) * 1000);
-    memcpy(info, "user ", 5);
+    memcpy(info, "USER ", 5);
     memcpy(info + 5, user, strlen(user));
-    info[5 + strlen(user)] = '\n';
-    info[5 + strlen(user) + 1] = '\0';
+    info[5 + strlen(user)] = '\r';
+    info[5 + strlen(user) + 1] = '\n';
+    info[5 + strlen(user) + 2] = '\0';
     printf("%s", info);
     sendInfo(sockfd, info);
     readServerResponse(sockfd,response);
@@ -296,10 +298,11 @@ int main (int argc, char* argv[]){
     //send password
     memset(response, 0, 4 * sizeof(char));
     memset(info, 0, 1000 * sizeof(char));
-    memcpy(info, "pass ", 5);
+    memcpy(info, "PASS ", 5);
     memcpy(info + 5, pass , strlen(pass));
-    info[5 + strlen(pass)] = '\n';
-    info[5 + strlen(user) + 1] = '\0';
+    info[5 + strlen(pass)] = '\r';
+    info[5 + strlen(pass) + 1] = '\n';
+    info[5 + strlen(pass) + 2] = '\0';
     printf("%s", info);
     sendInfo(sockfd, info);
     readServerResponse(sockfd, response);
@@ -311,7 +314,7 @@ int main (int argc, char* argv[]){
     //send passive mode command
     memset(response, 0, 4 * sizeof(char));
     memset(info, 0, 1000 * sizeof(char));
-    memcpy(info, "pasv\n\0", 6);
+    memcpy(info, "pasv\r\n\0", 7);
     printf("%s", info);
     sendInfo(sockfd, info);
     int newport = 0;
@@ -333,11 +336,14 @@ int main (int argc, char* argv[]){
     memset(info, 0, 1000 * sizeof(char));
     memcpy(info, "retr ", 5);
     memcpy(info + 5, path, strlen(path));
-    memcpy(info + 5 + strlen(path), "\n\0", 2);
+    memcpy(info + 5 + strlen(path), "\r\n\0", 3);
     printf("%s", info);
     sendInfo(sockfd,info);
     readServerResponse(sockfd, response);
-    if(strcmp(response, "150") != 0){
+    if( (strcmp(response, "150") == 0) || (strcmp(response, "125") == 0)){
+        printf("Connection to server with socket B was sucessfull !\n");
+    }
+    else{
         printf("Bad connection to server by socket B. Please try again\n");
         return -1;
     }
