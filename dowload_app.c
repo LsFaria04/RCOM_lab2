@@ -146,7 +146,7 @@ int readServerResponse(const int socket, char* response){
         if(response_st == CODE){
             read(socket,byte,3);
             byte[3] = '\0';
-
+            
             //found a new line that starts with the response code
             if(strcmp(byte, response) == 0){
                 memset(byte, 0, 4);
@@ -163,6 +163,9 @@ int readServerResponse(const int socket, char* response){
                 else{
                     response_st = ONE;
                 }
+            }
+            else{
+                response_st = MANY;
             }
         }          
     }
@@ -290,6 +293,7 @@ int main (int argc, char* argv[]){
     printf("%s", info);
     sendInfo(sockfd, info);
     readServerResponse(sockfd,response);
+    printf("%s\n", response);
     if(strcmp(response, "331") != 0){
         printf("Unknown User. Please try again\n");
         return -1;
