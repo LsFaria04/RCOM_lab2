@@ -359,6 +359,12 @@ int main (int argc, char* argv[]){
     filename[size_name] = '\0';
     readFile(sockfd2, filename);
 
+    //close B socket
+    if(close(sockfd2) < 0){
+        perror("close()");
+        exit(-1);
+    }
+
     //get the confirmation that the file was transferred
     memset(response, 0, 4 * sizeof(char));
     memset(info, 0, 1000 * sizeof(char));
@@ -372,11 +378,6 @@ int main (int argc, char* argv[]){
 
     //close the socket previously open
     if (close(sockfd)<0) {
-        perror("close()");
-        exit(-1);
-    }
-
-    if(close(sockfd2) < 0){
         perror("close()");
         exit(-1);
     }
