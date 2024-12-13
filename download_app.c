@@ -9,15 +9,9 @@
 
 #include <string.h>
 
-typedef enum {
-    RECEIVE_USER,
-    RECEIVE_PASS,
-    PASS_REC,
-    PASV_MODE,
-    TRANSFER,
-    TRANSFER_COMPLETE
-} connection_state;
+#define MAX_LEN 500
 
+/*
 typedef enum{
     CODE,
     ONE,
@@ -26,6 +20,7 @@ typedef enum{
 } response_state;
 
 static response_state response_st = CODE;
+*/
 
 /*SERVER RESPONSES*/
 #define RV_USER 200
@@ -50,7 +45,7 @@ int parseParameters(char* input, char* host_ip, char *path, char* user, char* pa
     //no password and user found. Using default values
     if(matched < 3){
         strcpy(user,"anonymous");
-        strcpy(pass,"anonynous");
+        strcpy(pass,"anonymous");
         sscanf(input, "ftp://%1000[^/]%1000[^\n]",host_ip, path);
     }
 
@@ -66,42 +61,6 @@ int parseParameters(char* input, char* host_ip, char *path, char* user, char* pa
     host_ip[host_len] = '\0';
 
     return 0;
-}
-
-void response_state_machine(char *byte){
-    switch(response_st){
-        //first characters (response code)
-        case CODE:
-
-            if(*byte == ' '){
-                response_st = ONE;
-            }
-            else if(*byte == '-'){
-                response_st = MANY;
-            }
-            else if(*byte == '\n'){
-                response_st = END;
-            }
-            break;
-
-        //last line or just one line
-        case ONE:
-            if(*byte == '\n'){
-                response_st = END;
-            }
-            break;
-
-        //there are still many lines
-        case MANY:
-            if(*byte == '\n'){
-                response_st = CODE;
-            }
-            break;
-        
-        case END:
-            break;
-    }
-
 }
 
 int readServerResponsePassive(const int socket, char* response, int* filePort){
@@ -127,51 +86,71 @@ int readServerResponsePassive(const int socket, char* response, int* filePort){
 }
 //gets the server response (code number)
 int readServerResponse(const int socket, char* response){
-    char *byte = malloc(sizeof(char) * 4);
+    //buffer used to store the response content
+    char message[500];
+    char line[500];
+    memset(message, 0, 500);
+    memset(line, 0, 500);
 
+    bool multi = false; 
+    char byte;
+    int idx = 0;
+    
+    while (true) {
+        int b = read(socket, &byte, 1);
 
-    response_st = CODE;
+        if(b <= 0){
+            //read error
+            return -1;
+        }
 
-    //get the code
-    read(socket, response, 3);
-    response[3] = '\0';
+        if (byte == '\n') { 
+            //finnished to read the line
 
-    while(response_st != END){
-        
-        read(socket, byte, 1);
-        response_state_machine(byte);
+            line[idx] = '\0';
 
-        byte[1] = '\0';
+            //reset the idx because we have a new line coming next 
+            idx = 0;
 
-        if(response_st == CODE){
-            read(socket,byte,3);
-            byte[3] = '\0';
-            
-            //found a new line that starts with the response code
-            if(strcmp(byte, response) == 0){
-                memset(byte, 0, 4);
+            //check if is first line of the response
+            if (strlen(message) == 0) {
+               //copy the response code
+                memcpy(response, line, 3);
 
-                //read one more char to verify if is the last line
-                read(socket, byte, 1);
-                byte[1] = '\0';
-
-                //if has a blank space then his the last line
-                if(strcmp(byte, "-") == 0){
-                    response_st = MANY;
-                    continue;
-                }
-                else{
-                    response_st = ONE;
+                //the response is multiline
+                if (line[3] == '-') {
+                    multi = true; 
                 }
             }
-            else{
-                response_st = MANY;
+
+            //copy the line content to the message
+            strcpy(message, line);
+            strcpy(message + strlen(message), "\n");
+            printf("%s", message);
+
+            //check if is only one line. We don't have nothing more to read
+            if (!multi) {
+                break; 
             }
-        }          
+
+            //check if is last line so that we can exit the loop and send another request
+            if(line[3] != '-' && strncmp(line, response, 3) == 0){
+                break;
+            }
+
+        } else {   
+            if (idx < 499) {
+                line[idx] = byte;
+                idx++;
+            } else {
+                //reached the limit of the buffer. Could not catch the \n
+                return -1;
+            }
+        }
     }
 
-    free(byte);
-    printf("Server answered with : %s\n\n", response);
+    
+
     return 0;
 }
 
@@ -213,6 +192,7 @@ int createSockect(int *sockfd, int port, char* host_ip){
 
 int readFile(int sockfd, char *filename){
 
+    //open the file or create a new one if it doesn't exist
     FILE *file = fopen(filename, "w+");
     if(file == NULL){
         printf("Error while creating/opening the file %s\n", filename);
@@ -221,11 +201,14 @@ int readFile(int sockfd, char *filename){
 
     int bytes = 1;
     char readBuffer [1000];
+
     while(bytes > 0){
 
+        //read the content from the socket
         bytes = read(sockfd, readBuffer, 999);
         readBuffer[bytes] = '\n';
 
+        //write the content retrieved from the socket to the file
         if(fwrite(readBuffer, bytes, sizeof(char), file) < 0){
             return -1;
         }
@@ -237,12 +220,13 @@ int readFile(int sockfd, char *filename){
 
 int main (int argc, char* argv[]){
 
-    if(argc == 0){
+    if(argc == 1){
         printf("INSTRUCTIONS: \n\n");
         printf("Use the following: ftp://[<user>:<password>@]<host>/<url-path>\n");
         printf("Max length user = 100 chars\n");
         printf("Max length password = 100 chars\n");
         printf("Max length host/path = 1000 chars\n");
+        exit(-1);
     }
 
     if(argc > 2){
